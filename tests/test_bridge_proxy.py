@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import threading
 import time
@@ -47,6 +48,14 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
         MockOllamaHandler.last_received_body = self.rfile.read(content_length)
 
         if self.path == "/v1/chat/completions":
+            if b"trigger_upstream_500" in MockOllamaHandler.last_received_body:
+                data = json.dumps({"error": "upstream model crash"}).encode("utf-8")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
             if b'"stream": true' in MockOllamaHandler.last_received_body:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
@@ -121,12 +130,28 @@ def servers():
     ollama_server.shutdown()
 
 
-def test_healthz_unauthenticated(servers):
+def test_healthz_requires_auth(servers):
     proxy_addr, _ = servers
     url = f"http://{proxy_addr}/healthz"
+
+    # Unauthenticated request must return 401
     req = Request(url)
-    with urlopen(req) as resp:
+    with pytest.raises(HTTPError) as exc_info:
+        urlopen(req)
+    assert exc_info.value.code == 401
+    assert exc_info.value.headers.get("Cache-Control") == "no-store"
+
+    # Invalid token must return 401
+    req_invalid = Request(url, headers={"Authorization": "Bearer invalid-token-12345"})
+    with pytest.raises(HTTPError) as exc_info:
+        urlopen(req_invalid)
+    assert exc_info.value.code == 401
+
+    # Valid token must return 200 with Cache-Control: no-store
+    req_valid = Request(url, headers={"Authorization": f"Bearer {TEST_API_KEY}"})
+    with urlopen(req_valid) as resp:
         assert resp.status == 200
+        assert resp.headers.get("Cache-Control") == "no-store"
         data = json.loads(resp.read().decode("utf-8"))
         assert data["status"] == "healthy"
 
@@ -261,3 +286,112 @@ def test_payload_too_large(servers):
         assert exc_info.value.code == 413
     finally:
         ProxyHandler.max_body_bytes = old_max
+
+
+def test_route_normalization_and_traversal(servers):
+    proxy_addr, _ = servers
+
+    # Path traversal attempting to reach unapproved Ollama routes must return 404
+    traversal_paths = [
+        "/v1/../api/tags",
+        "/v1/chat/../../api/tags",
+        "/v1/%2e%2e/api/tags",
+        "/api/tags/../tags",
+        "//api/tags",
+        "/v1/models/extra",
+        "/v1/models/",
+    ]
+    for p in traversal_paths:
+        url = f"http://{proxy_addr}{p}"
+        req = Request(url, headers={"Authorization": f"Bearer {TEST_API_KEY}"})
+        with pytest.raises(HTTPError) as exc_info:
+            urlopen(req)
+        assert exc_info.value.code in (404, 400), f"Path {p} returned {exc_info.value.code}"
+
+    # Double slashes on allowlisted path should either be normalized to /v1/models or rejected
+    url_double = f"http://{proxy_addr}//v1/models"
+    req_double = Request(url_double, headers={"Authorization": f"Bearer {TEST_API_KEY}"})
+    try:
+        with urlopen(req_double) as resp:
+            assert resp.status == 200
+            # Ensure upstream received the normalized path /v1/models, NOT //v1/models
+            assert MockOllamaHandler.last_received_path == "/v1/models"
+    except HTTPError as exc:
+        assert exc.code in (400, 404)
+
+
+def test_header_hygiene_and_access_stripping(servers):
+    proxy_addr, _ = servers
+    host, port_str = proxy_addr.split(":")
+    conn = http.client.HTTPConnection(host, int(port_str), timeout=5.0)
+    conn.putrequest("GET", "/v1/models", skip_host=False, skip_accept_encoding=True)
+    conn.putheader("Authorization", f"Bearer {TEST_API_KEY}")
+    conn.putheader("Proxy-Authorization", "Basic dXNlcjpwYXNz")
+    conn.putheader("CF-Access-Client-Id", "test-cf-client-id")
+    conn.putheader("CF-Access-Client-Secret", "test-cf-client-secret")
+    conn.putheader("Cf-Access-Jwt-Assertion", "test-cf-jwt-token")
+    conn.putheader("Connection", "X-Custom-Hop")
+    conn.putheader("X-Custom-Hop", "sensitive-custom-header")
+    conn.putheader("X-Safe-Header", "safe-value")
+    conn.endheaders()
+    resp = conn.getresponse()
+    assert resp.status == 200
+    resp.read()
+    conn.close()
+
+    received = {k.lower(): v for k, v in MockOllamaHandler.last_received_headers.items()}
+    # Assert sensitive and hop headers are NOT present in upstream request
+    assert "authorization" not in received
+    assert "proxy-authorization" not in received
+    assert "cf-access-client-id" not in received
+    assert "cf-access-client-secret" not in received
+    assert "cf-access-jwt-assertion" not in received
+    assert "x-custom-hop" not in received
+    # Safe header should pass through
+    assert received.get("x-safe-header") == "safe-value"
+
+
+def test_upstream_500_forwarding(servers):
+    proxy_addr, _ = servers
+    url = f"http://{proxy_addr}/v1/chat/completions"
+    body = json.dumps({"messages": [{"role": "user", "content": "trigger_upstream_500"}]}).encode(
+        "utf-8"
+    )
+    req = Request(
+        url,
+        data=body,
+        headers={"Authorization": f"Bearer {TEST_API_KEY}", "Content-Type": "application/json"},
+    )
+    with pytest.raises(HTTPError) as exc_info:
+        urlopen(req)
+    assert exc_info.value.code == 500
+    assert exc_info.value.headers.get("Cache-Control") == "no-store"
+    resp_body = json.loads(exc_info.value.read().decode("utf-8"))
+    assert resp_body.get("error") == "upstream model crash"
+
+
+def test_cache_control_no_store_on_all_responses(servers):
+    proxy_addr, _ = servers
+
+    # Success response on /v1/models
+    req_models = Request(
+        f"http://{proxy_addr}/v1/models", headers={"Authorization": f"Bearer {TEST_API_KEY}"}
+    )
+    with urlopen(req_models) as resp:
+        assert resp.headers.get("Cache-Control") == "no-store"
+
+    # 404 Not Found error
+    req_404 = Request(
+        f"http://{proxy_addr}/api/nonexistent", headers={"Authorization": f"Bearer {TEST_API_KEY}"}
+    )
+    with pytest.raises(HTTPError) as exc_info:
+        urlopen(req_404)
+    assert exc_info.value.code == 404
+    assert exc_info.value.headers.get("Cache-Control") == "no-store"
+
+    # 401 Unauthorized error
+    req_401 = Request(f"http://{proxy_addr}/v1/models")
+    with pytest.raises(HTTPError) as exc_info:
+        urlopen(req_401)
+    assert exc_info.value.code == 401
+    assert exc_info.value.headers.get("Cache-Control") == "no-store"

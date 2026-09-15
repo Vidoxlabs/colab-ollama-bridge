@@ -59,3 +59,50 @@ def test_verify_pid_ownership_rejects_recycled_pid(tmp_path: Path):
     sup.register_process("fake_service", os.getpid(), "totally_different_service_name_12345")
     # Must fail because expected command identifier doesn't match ps output
     assert sup.verify_pid_ownership("fake_service") is False
+
+
+def test_supervisor_check_health_with_auth(tmp_path: Path):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class MockServiceHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            pass
+
+        def do_GET(self):
+            if self.path == "/healthz":
+                auth = self.headers.get("Authorization", "")
+                if auth == "Bearer valid-test-key-12345":
+                    self.send_response(200)
+                    self.end_headers()
+                else:
+                    self.send_response(401)
+                    self.end_headers()
+            elif self.path == "/":
+                self.send_response(200)
+                self.end_headers()
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), MockServiceHandler)
+    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t.start()
+    addr = f"127.0.0.1:{server.server_port}"
+
+    sup = ProcessSupervisor(state_dir=str(tmp_path))
+
+    try:
+        # Invalid key -> False
+        assert sup.check_health(bridge_bind=addr, ollama_bind=addr, api_key="wrong-key") is False
+
+        # Missing key -> False
+        assert sup.check_health(bridge_bind=addr, ollama_bind=addr, api_key="") is False
+
+        # Valid key -> True
+        assert (
+            sup.check_health(bridge_bind=addr, ollama_bind=addr, api_key="valid-test-key-12345")
+            is True
+        )
+    finally:
+        server.shutdown()

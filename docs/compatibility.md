@@ -22,9 +22,9 @@ This matrix tracks verified runtimes, tested hardware environments, and client c
 | :--- | :--- | :--- | :--- |
 | **Python** | `>= 3.10` | `3.11+` | Verified (3.11, 3.12, 3.13 tested in CI/local) |
 | **Ollama** | `>= 0.4.0` | Latest release | Compatible with OpenAI `/v1` endpoints |
-| **cloudflared** | `>= 2024.1.0` | Latest release | Supports `--token-file` and `--url` |
+| **cloudflared** | `>= 2024.1.0` | Latest release | Supports `--token-file` (runtime check enforced) and `--url` |
 | **OpenCode** | `>= 1.0.0` | Latest release | Compatible with `@ai-sdk/openai-compatible` |
-| **colab-mcp** | `@main` | Pinned git commit | `LIVE_RUNTIME_VERIFICATION_REQUIRED` |
+| **colab-mcp** | `v1.0.2` | Tag `v1.0.2` (`b85ab6e`) | `LIVE_RUNTIME_VERIFICATION_REQUIRED` (Apache-2.0, Python 3.13+) |
 
 ---
 

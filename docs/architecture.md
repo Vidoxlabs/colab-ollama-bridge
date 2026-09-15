@@ -62,14 +62,15 @@ The bridge proxy strictly enforces the following route matrix:
 
 | Method | Path | Auth Required | Action |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/healthz` | No | Local bridge health check (`{"status": "healthy"}`). No upstream details. |
+| `GET` | `/healthz` | Yes | Authenticated local bridge health check (`{"status": "healthy"}`). No upstream details. |
 | `GET` | `/v1/models` | Yes | Authenticated model discovery; forwarded to Ollama. |
 | `POST` | `/v1/chat/completions` | Yes | Authenticated chat / tool-call inference (streaming and non-streaming). |
 | `POST` | `/v1/completions` | Yes | Authenticated text completion route. |
 | `POST` | `/v1/embeddings` | Yes | Embeddings route (returns 404 unless `ENABLE_EMBEDDINGS=true`). |
 | `*` | *All other routes* | - | Returns HTTP 404 (`{"error": {"code": "not_found"}}`). |
 
-- **Header Stripping**: The proxy strips `connection`, `keep-alive`, `proxy-authenticate`, `proxy-authorization`, `te`, `trailers`, `transfer-encoding`, `upgrade`, and suppresses `Authorization` before forwarding to Ollama.
+- **Header Stripping**: The proxy strips hop-by-hop headers, tokens declared in `Connection`, client `Authorization`, and Cloudflare Access headers (`CF-Access-*`) before forwarding to Ollama.
+- **Cache-Control**: Every proxy response includes `Cache-Control: no-store` to prevent caching of inferences, model discovery, or health status.
 - **Payload Cap**: Request bodies exceeding 8 MiB return HTTP 413 Payload Too Large.
 - **Streaming**: Server-Sent Events (`text/event-stream`) are streamed directly chunk-by-chunk without whole-response buffering.
 
@@ -81,3 +82,27 @@ The bridge proxy strictly enforces the following route matrix:
 2. **Notebook Boundary**: Outputs are stripped. Credentials remain in runtime memory or mode `0600` temporary files.
 3. **Edge Boundary**: The tunnel provides network reachability, not authorization. Bearer validation is mandatory in both modes.
 4. **Origin Boundary**: Ollama binds exclusively to loopback `127.0.0.1`.
+
+---
+
+## 6. Companion Integration: `googlecolab/colab-mcp`
+
+The inference bridge operates independently from Google's official Colab MCP server:
+- **Repository**: [`googlecolab/colab-mcp`](https://github.com/googlecolab/colab-mcp)
+- **Pinned Release**: `v1.0.2` (commit `b85ab6ec5206e06fdd289ff4ff3f9c4ee767b422`)
+- **License**: Apache-2.0
+- **Runtime Requirement**: Python 3.13+
+- **Separation**: `colab-mcp` provides execution environment inspection and notebook interaction; it is completely decoupled from the loopback LLM inference tunnel.
+
+---
+
+## 7. Distribution Contract & Clean-Room Execution
+
+For headless hosts and Google Colab execution without cloning the repository, `scripts/bootstrap.sh` supports standard stdin piping:
+```bash
+curl -fsSL https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.0/scripts/bootstrap.sh | bash
+```
+When running outside a Git checkout, the bootstrap script:
+1. Downloads runtime assets (`model-profiles.json`, `bridge_proxy.py`, `supervisor.py`, `generate-client-config.py`) and `SHA256SUMS.txt` from `BRIDGE_DIST_URL` (defaulting to the canonical GitHub release).
+2. Performs cryptographic SHA-256 integrity verification before starting any service.
+3. Fails closed on any hash mismatch, missing asset, or network failure.

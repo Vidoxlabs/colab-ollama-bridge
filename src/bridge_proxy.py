@@ -13,8 +13,10 @@ import http.client
 import json
 import logging
 import os
+import posixpath
 import sys
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import ClassVar
 
@@ -108,9 +110,41 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(payload)
+
+    def _normalize_path(self, raw_path: str) -> tuple[str, str] | None:
+        """Normalize raw request path, returning (normalized_path, query_string).
+
+        Returns None if the path is invalid, malformed, or traverses outside root.
+        """
+        try:
+            parsed = urllib.parse.urlsplit(raw_path)
+        except Exception:
+            return None
+
+        path_part = parsed.path
+        if not path_part:
+            return None
+
+        unquoted = urllib.parse.unquote(path_part)
+        if not unquoted.startswith("/"):
+            return None
+
+        # Collapse redundant slashes and resolve . and ..
+        normalized = posixpath.normpath(unquoted)
+        while normalized.startswith("//"):
+            normalized = normalized[1:]
+
+        if unquoted.endswith("/") and normalized != "/":
+            normalized = normalized + "/"
+
+        if not normalized.startswith("/"):
+            return None
+
+        return normalized, parsed.query
 
     def _validate_auth(self) -> bool:
         """Validate Authorization: Bearer token using constant-time comparison."""
@@ -120,9 +154,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
         token = auth_header[7:].strip()
         return hmac.compare_digest(token, self.api_key)
 
-    def _is_route_allowed(self, method: str, path: str) -> bool:
+    def _is_route_allowed(self, method: str, clean_path: str) -> bool:
         """Check if request matches allowlisted OpenAI-compatible routes."""
-        clean_path = path.split("?")[0]
         if method == "GET" and clean_path == "/healthz":
             return True
         if method == "GET" and clean_path == "/v1/models":
@@ -137,14 +170,33 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         start_time = time.monotonic()
-        clean_path = self.path.split("?")[0]
+        norm = self._normalize_path(self.path)
+        if norm is None:
+            self._send_json_error(400, "bad_request", "Invalid Request Path")
+            return
+        clean_path, query = norm
 
-        # 1. Unauthenticated local health check
+        # 1. Check route allowlist
+        if not self._is_route_allowed("GET", clean_path):
+            self._send_json_error(404, "not_found", "Not Found")
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            logger.info("GET %s 404 %dms", clean_path, duration_ms)
+            return
+
+        # 2. Check authentication
+        if not self._validate_auth():
+            self._send_json_error(401, "unauthorized", "Unauthorized")
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            logger.info("GET %s 401 %dms", clean_path, duration_ms)
+            return
+
+        # 3. Authenticated local health check
         if clean_path == "/healthz":
             payload = json.dumps({"status": "healthy"}).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Connection", "close")
             self.end_headers()
             self.wfile.write(payload)
@@ -152,29 +204,20 @@ class ProxyHandler(BaseHTTPRequestHandler):
             logger.info("GET %s 200 %dms", clean_path, duration_ms)
             return
 
-        # 2. Check route allowlist
-        if not self._is_route_allowed("GET", self.path):
-            self._send_json_error(404, "not_found", "Not Found")
-            duration_ms = int((time.monotonic() - start_time) * 1000)
-            logger.info("GET %s 404 %dms", clean_path, duration_ms)
-            return
-
-        # 3. Check authentication
-        if not self._validate_auth():
-            self._send_json_error(401, "unauthorized", "Unauthorized")
-            duration_ms = int((time.monotonic() - start_time) * 1000)
-            logger.info("GET %s 401 %dms", clean_path, duration_ms)
-            return
-
         # 4. Proxy to upstream
-        self._proxy_request("GET", body=None, start_time=start_time)
+        upstream_path = clean_path + (f"?{query}" if query else "")
+        self._proxy_request("GET", upstream_path, clean_path, body=None, start_time=start_time)
 
     def do_POST(self) -> None:  # noqa: N802
         start_time = time.monotonic()
-        clean_path = self.path.split("?")[0]
+        norm = self._normalize_path(self.path)
+        if norm is None:
+            self._send_json_error(400, "bad_request", "Invalid Request Path")
+            return
+        clean_path, query = norm
 
         # 1. Check route allowlist
-        if not self._is_route_allowed("POST", self.path):
+        if not self._is_route_allowed("POST", clean_path):
             self._send_json_error(404, "not_found", "Not Found")
             duration_ms = int((time.monotonic() - start_time) * 1000)
             logger.info("POST %s 404 %dms", clean_path, duration_ms)
@@ -207,17 +250,37 @@ class ProxyHandler(BaseHTTPRequestHandler):
             body = b""
 
         # 4. Proxy to upstream
-        self._proxy_request("POST", body=body, start_time=start_time)
+        upstream_path = clean_path + (f"?{query}" if query else "")
+        self._proxy_request("POST", upstream_path, clean_path, body=body, start_time=start_time)
 
-    def _proxy_request(self, method: str, body: bytes | None, start_time: float) -> None:
+    def _proxy_request(
+        self,
+        method: str,
+        upstream_path: str,
+        clean_path: str,
+        body: bytes | None,
+        start_time: float,
+    ) -> None:
         """Forward request to upstream Ollama and stream back response."""
-        clean_path = self.path.split("?")[0]
+        # Collect Connection header tokens to strip
+        custom_connection_hops: set[str] = set()
+        raw_connection = self.headers.get("Connection", "")
+        if raw_connection:
+            for token in raw_connection.split(","):
+                token_clean = token.strip().lower()
+                if token_clean:
+                    custom_connection_hops.add(token_clean)
 
-        # Filter headers: strip hop-by-hop and client Authorization
+        # Filter headers: strip hop-by-hop, connection tokens, client Authorization, and Cloudflare Access headers
         forward_headers: dict[str, str] = {}
         for header, value in self.headers.items():
             lower_header = header.lower()
-            if lower_header in HOP_BY_HOP_HEADERS or lower_header == "authorization":
+            if (
+                lower_header in HOP_BY_HOP_HEADERS
+                or lower_header in custom_connection_hops
+                or lower_header == "authorization"
+                or lower_header.startswith("cf-access-")
+            ):
                 continue
             forward_headers[header] = value
 
@@ -228,19 +291,20 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self.upstream_port,
                 timeout=READ_TIMEOUT,
             )
-            conn.request(method, self.path, body=body, headers=forward_headers)
+            conn.request(method, upstream_path, body=body, headers=forward_headers)
             upstream_resp = conn.getresponse()
 
             # Prepare client response headers
             status_code = upstream_resp.status
             self.send_response(status_code)
+            self.send_header("Cache-Control", "no-store")
 
             content_length = upstream_resp.getheader("Content-Length")
             is_chunked = False
 
             for header, value in upstream_resp.getheaders():
                 lower_header = header.lower()
-                if lower_header in HOP_BY_HOP_HEADERS:
+                if lower_header in HOP_BY_HOP_HEADERS or lower_header == "cache-control":
                     continue
                 self.send_header(header, value)
 
@@ -277,6 +341,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
             duration_ms = int((time.monotonic() - start_time) * 1000)
             logger.info("%s %s %d %dms", method, clean_path, status_code, duration_ms)
 
+        except (BrokenPipeError, ConnectionResetError):
+            duration_ms = int((time.monotonic() - start_time) * 1000)
+            logger.info("Client disconnected on %s %s (%dms)", method, clean_path, duration_ms)
         except (TimeoutError, http.client.RemoteDisconnected):
             duration_ms = int((time.monotonic() - start_time) * 1000)
             logger.error("Upstream timeout on %s %s (%dms)", method, clean_path, duration_ms)

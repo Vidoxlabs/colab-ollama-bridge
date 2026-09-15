@@ -39,18 +39,50 @@ jobs:
       - name: Run verification gate
         run: make check
 
+      - name: Validate release tag against pyproject.toml and CHANGELOG.md
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PYPROJECT_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+          if [[ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]]; then
+            echo "[ERROR] Git tag ($GITHUB_REF_NAME) does not match pyproject.toml version ($PYPROJECT_VERSION)" >&2
+            exit 1
+          fi
+          if ! grep -q "## \[$TAG_VERSION\]" CHANGELOG.md; then
+            echo "[ERROR] CHANGELOG.md does not contain section for version $TAG_VERSION" >&2
+            exit 1
+          fi
+          echo "Release tag validation passed: $GITHUB_REF_NAME matches pyproject.toml and CHANGELOG.md."
+
       - name: Generate SHA-256 Checksums
         run: |
-          mkdir -p dist
-          cp scripts/bootstrap.sh dist/
-          cp config/model-profiles.json dist/
-          cd dist
-          sha256sum * > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          mkdir -p dist/config dist/src dist/scripts
+          cp config/model-profiles.json dist/config/
+          cp src/bridge_proxy.py dist/src/
+          cp src/supervisor.py dist/src/
+          cp scripts/generate-client-config.py dist/scripts/
+          cp scripts/bootstrap.sh dist/scripts/
+          (
+            cd dist
+            sha256sum \
+              config/model-profiles.json \
+              src/bridge_proxy.py \
+              src/supervisor.py \
+              scripts/generate-client-config.py \
+              scripts/bootstrap.sh > SHA256SUMS.txt
+            cat SHA256SUMS.txt
+          )
+          # Top-level convenience copies in dist root
+          cp dist/scripts/bootstrap.sh dist/
+          cp dist/config/model-profiles.json dist/
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/*
+            dist/SHA256SUMS.txt
+            dist/bootstrap.sh
+            dist/model-profiles.json
+            dist/config/*
+            dist/src/*
+            dist/scripts/*
           generate_release_notes: true

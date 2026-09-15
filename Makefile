@@ -16,7 +16,7 @@ format:
 
 test:
 	uv run pytest -v
-	bats tests/test_bootstrap.bats
+	bats tests/*.bats
 	python3 scripts/validate-notebook.py notebooks/colab_ollama.ipynb
 
 scan:

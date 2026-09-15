@@ -193,13 +193,34 @@ class ProcessSupervisor:
                 token_file.unlink()
 
     def check_health(
-        self, bridge_bind: str = DEFAULT_BRIDGE_BIND, ollama_bind: str = DEFAULT_OLLAMA_BIND
+        self,
+        bridge_bind: str = DEFAULT_BRIDGE_BIND,
+        ollama_bind: str = DEFAULT_OLLAMA_BIND,
+        api_key: str | None = None,
     ) -> bool:
-        """Check health of proxy and upstream Ollama."""
-        # 1. Check bridge proxy
+        """Check health of proxy and upstream Ollama with authenticated health check."""
+        # 1. Resolve API key if not provided
+        if not api_key:
+            api_key = os.environ.get("BRIDGE_API_KEY")
+            if not api_key and os.environ.get("BRIDGE_API_KEY_FILE"):
+                key_path = Path(os.environ["BRIDGE_API_KEY_FILE"])
+                if key_path.is_file():
+                    with contextlib.suppress(Exception):
+                        api_key = key_path.read_text(encoding="utf-8").strip()
+            if not api_key:
+                candidate = self.state_dir / "bridge_api.key"
+                if candidate.is_file():
+                    with contextlib.suppress(Exception):
+                        api_key = candidate.read_text(encoding="utf-8").strip()
+
+        # 2. Check bridge proxy
         proxy_url = f"http://{bridge_bind}/healthz"
+        proxy_headers = {"User-Agent": "Bridge-Supervisor/1.0"}
+        if api_key:
+            proxy_headers["Authorization"] = f"Bearer {api_key}"
+
         try:
-            req = Request(proxy_url, headers={"User-Agent": "Bridge-Supervisor/1.0"})
+            req = Request(proxy_url, headers=proxy_headers)
             with urlopen(req, timeout=3.0) as resp:
                 if resp.status != 200:
                     logger.warning("Proxy health check returned HTTP %d", resp.status)
@@ -208,7 +229,7 @@ class ProcessSupervisor:
             logger.warning("Proxy health check failed connecting to %s", proxy_url)
             return False
 
-        # 2. Check Ollama
+        # 3. Check Ollama
         ollama_url = f"http://{ollama_bind}/"
         try:
             req = Request(ollama_url, headers={"User-Agent": "Bridge-Supervisor/1.0"})
@@ -226,6 +247,7 @@ class ProcessSupervisor:
         self,
         bridge_bind: str = DEFAULT_BRIDGE_BIND,
         ollama_bind: str = DEFAULT_OLLAMA_BIND,
+        api_key: str | None = None,
         interval_seconds: float = 10.0,
     ) -> None:
         """Main supervision loop monitoring health."""
@@ -233,7 +255,7 @@ class ProcessSupervisor:
         consecutive_failures = 0
 
         while self.running:
-            is_healthy = self.check_health(bridge_bind, ollama_bind)
+            is_healthy = self.check_health(bridge_bind, ollama_bind, api_key)
             if is_healthy:
                 consecutive_failures = 0
                 logger.info("Services healthy (proxy @ %s, ollama @ %s)", bridge_bind, ollama_bind)
@@ -261,7 +283,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "stop":
         supervisor.stop_all()
     elif len(sys.argv) > 1 and sys.argv[1] == "check":
-        healthy = supervisor.check_health(bridge_addr, ollama_addr)
+        api_k = sys.argv[2] if len(sys.argv) > 2 else None
+        healthy = supervisor.check_health(bridge_addr, ollama_addr, api_k)
         sys.exit(0 if healthy else 1)
     elif len(sys.argv) > 4 and sys.argv[1] == "register":
         supervisor.register_process(sys.argv[2], int(sys.argv[3]), sys.argv[4])

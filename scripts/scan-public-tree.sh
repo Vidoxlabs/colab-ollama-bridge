@@ -43,6 +43,22 @@ if [[ "${1:-}" == "--test" ]]; then
     exit 1
   fi
 
+  # 5. Test PEM private key leak triggers failure
+  mkdir -p "$TMP_TEST_DIR/leak-pem"
+  echo "-----BEGIN RSA PRIVATE KEY-----" > "$TMP_TEST_DIR/leak-pem/key.txt"
+  if (SCAN_DIR="$TMP_TEST_DIR/leak-pem" "$0" --run-scan >/dev/null 2>&1); then
+    echo "FAIL: Scanner missed PEM private key leak"
+    exit 1
+  fi
+
+  # 6. Test high-entropy secret assignment triggers failure
+  mkdir -p "$TMP_TEST_DIR/leak-entropy"
+  echo 'api_key = "a8f9b2c3d4e5f60718293a4b5c6d7e8f"' > "$TMP_TEST_DIR/leak-entropy/secret.txt"
+  if (SCAN_DIR="$TMP_TEST_DIR/leak-entropy" "$0" --run-scan >/dev/null 2>&1); then
+    echo "FAIL: Scanner missed high-entropy secret assignment leak"
+    exit 1
+  fi
+
   echo "All scanner self-tests PASSED."
   exit 0
 fi
@@ -89,6 +105,10 @@ LEAK_REGEXES=(
   '(ghp_[A-Za-z0-9_]{36}|gho_[A-Za-z0-9_]{36}|AIza[0-9A-Za-z-_]{35}|sk-[A-Za-z0-9_-]{20,})'
   # JWT tokens
   'ey[A-Za-z0-9_-]{20,}\.ey[A-Za-z0-9_-]{20,}\.'
+  # PEM private key blocks
+  '-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----'
+  # High-entropy secret assignments
+  '(api[_-]?key|secret[_-]?key|auth[_-]?token|access[_-]?token|cf[_-]?token)[[:space:]]*[:=][[:space:]]*["'\''][A-Za-z0-9+/=_-]{32,}["'\'']'
 )
 
 # Files to inspect
@@ -102,7 +122,7 @@ fi
 for pattern in "${LEAK_REGEXES[@]}"; do
   matches=$(echo "$FILES" | while IFS= read -r f; do
     if [[ -f "$f" && "$f" != *"scan-public-tree.sh"* ]]; then
-      grep -En "$pattern" "$f" 2>/dev/null || true
+      grep -En -e "$pattern" "$f" 2>/dev/null || true
     fi
   done)
 
@@ -116,7 +136,7 @@ done
 echo "--- 3. Checking reachable Git history ---"
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git rev-parse --verify HEAD >/dev/null 2>&1; then
   for pattern in "${LEAK_REGEXES[@]}"; do
-    history_matches=$(git log -p --all -- ":!scripts/scan-public-tree.sh" | grep -En "$pattern" 2>/dev/null || true)
+    history_matches=$(git log -p --all -- ":!scripts/scan-public-tree.sh" | grep -En -e "$pattern" 2>/dev/null || true)
     if [[ -n "$history_matches" ]]; then
       echo "ERROR: Sensitive pattern found in Git history ($pattern):"
       echo "$history_matches" | head -n 10

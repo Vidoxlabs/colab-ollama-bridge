@@ -35,7 +35,11 @@ EOF
   # Mock cloudflared
   cat << 'EOF' > "$SHIM_DIR/cloudflared"
 #!/bin/bash
-if [[ "$*" == *"--url"* ]]; then
+if [[ "$*" == *"--help"* ]]; then
+  echo "Usage: cloudflared [options]"
+  echo "  --token-file value  Filepath at which to read the tunnel token."
+  exit 0
+elif [[ "$*" == *"--url"* ]]; then
   echo "INF +--------------------------------------------------------------------------------------------+"
   echo "INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |"
   echo "INF |  https://mock-test-tunnel.trycloudflare.com                                                |"
@@ -52,6 +56,12 @@ EOF
 }
 
 teardown() {
+  for pid_file in "$BRIDGE_STATE_DIR"/*.pid; do
+    if [[ -f "$pid_file" ]]; then
+      pid=$(<"$pid_file")
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
   rm -rf "$TEST_TMP_DIR"
 }
 
@@ -164,4 +174,24 @@ EOF
 
   run bash scripts/bootstrap.sh
   [[ "$output" =~ "MODEL_OVERRIDE (qwen2.5-coder:32b) may exceed recommended VRAM on T4" ]]
+}
+
+@test "bootstrap refuses named mode if cloudflared lacks --token-file support" {
+  export BRIDGE_API_KEY="valid-secret-key-12345678"
+  export BRIDGE_MODE="named"
+  export TUNNEL_TOKEN="mock-tunnel-token-value"
+
+  cat << 'EOF' > "$SHIM_DIR/cloudflared"
+#!/bin/bash
+if [[ "$*" == *"tunnel run --help"* ]]; then
+  echo "Usage: cloudflared [options] (legacy without token-file)"
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "$SHIM_DIR/cloudflared"
+
+  run bash scripts/bootstrap.sh
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "Installed cloudflared does not support --token-file" ]]
 }

@@ -6,7 +6,23 @@ set -euo pipefail
 # Ensure set -x is disabled to protect credentials
 set +x
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Locate local repository root if executed within a git clone
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+REPO_ROOT=""
+if [[ -n "$SCRIPT_SOURCE" && "$SCRIPT_SOURCE" != "-" && "$SCRIPT_SOURCE" != "/dev/stdin" ]]; then
+  CANDIDATE_ROOT="$(cd "$(dirname "$SCRIPT_SOURCE")/.." 2>/dev/null && pwd || true)"
+  if [[ -n "$CANDIDATE_ROOT" && \
+        -f "$CANDIDATE_ROOT/config/model-profiles.json" && \
+        -f "$CANDIDATE_ROOT/src/bridge_proxy.py" && \
+        -f "$CANDIDATE_ROOT/src/supervisor.py" && \
+        -f "$CANDIDATE_ROOT/scripts/generate-client-config.py" ]]; then
+    REPO_ROOT="$CANDIDATE_ROOT"
+  fi
+fi
+
+# Distribution defaults
+DEFAULT_DIST_URL="https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.0"
+BRIDGE_DIST_URL="${BRIDGE_DIST_URL:-$DEFAULT_DIST_URL}"
 
 # --- Configuration & Defaults ---
 BRIDGE_BIND="${BRIDGE_BIND:-127.0.0.1:11435}"
@@ -133,6 +149,72 @@ fi
 
 echo "Selected tunnel mode: $ACTIVE_MODE"
 
+# 4. Distribution Asset Resolution & Integrity Verification
+verify_checksums() {
+  local target_dir="$1"
+  local sum_file="$2"
+  shift 2
+  local files=("$@")
+  (
+    cd "$target_dir"
+    local check_file="$target_dir/.verify_sums.tmp"
+    rm -f "$check_file"
+    for f in "${files[@]}"; do
+      match=$(grep -E "[[:space:]]+$f\$" "$sum_file" || true)
+      if [[ -z "$match" ]]; then
+        echo "[ERROR] [STAGE:preflight] Asset '$f' missing from checksum manifest." >&2
+        return 1
+      fi
+      echo "$match" >> "$check_file"
+    done
+    if command -v sha256sum >/dev/null 2>&1; then
+      sha256sum -c "$check_file"
+    elif command -v shasum >/dev/null 2>&1; then
+      shasum -a 256 -c "$check_file"
+    else
+      echo "[ERROR] [STAGE:preflight] Neither sha256sum nor shasum is available." >&2
+      return 1
+    fi
+  )
+}
+
+REQUIRED_ASSETS=(
+  "config/model-profiles.json"
+  "src/bridge_proxy.py"
+  "src/supervisor.py"
+  "scripts/generate-client-config.py"
+)
+
+if [[ -n "$REPO_ROOT" ]]; then
+  APP_DIR="$REPO_ROOT"
+else
+  APP_DIR="$BRIDGE_STATE_DIR/assets"
+  mkdir -p "$APP_DIR/config" "$APP_DIR/src" "$APP_DIR/scripts"
+
+  echo "Fetching distribution manifest from $BRIDGE_DIST_URL..."
+  SUM_FILE="$APP_DIR/SHA256SUMS.txt"
+  if ! curl -fsSL "$BRIDGE_DIST_URL/SHA256SUMS.txt" -o "$SUM_FILE"; then
+    echo "[ERROR] [STAGE:preflight] Failed to download SHA256SUMS.txt from $BRIDGE_DIST_URL." >&2
+    exit 1
+  fi
+
+  for asset in "${REQUIRED_ASSETS[@]}"; do
+    dest="$APP_DIR/$asset"
+    mkdir -p "$(dirname "$dest")"
+    if ! curl -fsSL "$BRIDGE_DIST_URL/$asset" -o "$dest"; then
+      echo "[ERROR] [STAGE:preflight] Failed to download required asset '$asset' from $BRIDGE_DIST_URL." >&2
+      exit 1
+    fi
+  done
+
+  echo "Verifying asset checksums..."
+  if ! verify_checksums "$APP_DIR" "$SUM_FILE" "${REQUIRED_ASSETS[@]}"; then
+    echo "[ERROR] [STAGE:preflight] Checksum verification failed for distribution assets." >&2
+    exit 1
+  fi
+  echo "Asset integrity verified."
+fi
+
 # --- STAGE: Detect ---
 log_stage "detect" "Detecting hardware and selecting model profile"
 
@@ -151,7 +233,7 @@ echo "Detected GPU: $GPU_NAME with ${DETECTED_VRAM} MiB VRAM"
 # Map to model profile from config/model-profiles.json
 PROFILE_DATA=$(python3 -c "
 import json, sys
-with open('$ROOT/config/model-profiles.json') as f:
+with open('$APP_DIR/config/model-profiles.json') as f:
     cfg = json.load(f)
 vram = int('$DETECTED_VRAM')
 selected = None
@@ -227,7 +309,7 @@ if [[ $OLLAMA_RUNNING -eq 0 ]]; then
   OLLAMA_HOST="$OLLAMA_BIND" ollama serve > "$BRIDGE_STATE_DIR/ollama.log" 2>&1 &
   OLLAMA_PID=$!
   echo "$OLLAMA_PID" > "$BRIDGE_STATE_DIR/ollama.pid"
-  python3 "$ROOT/src/supervisor.py" register ollama "$OLLAMA_PID" "ollama" 2>/dev/null || true
+  python3 "$APP_DIR/src/supervisor.py" register ollama "$OLLAMA_PID" "ollama" 2>/dev/null || true
 
   # Wait for Ollama ready
   READY=0
@@ -259,7 +341,7 @@ fi
 log_stage "proxy" "Starting loopback authentication proxy on $BRIDGE_BIND"
 
 PROXY_RUNNING=0
-if curl -fs "http://$BRIDGE_BIND/healthz" >/dev/null 2>&1; then
+if curl -fs -H "Authorization: Bearer $(<"$API_KEY_FILE")" "http://$BRIDGE_BIND/healthz" >/dev/null 2>&1; then
   echo "Proxy is already listening on $BRIDGE_BIND."
   PROXY_RUNNING=1
 fi
@@ -269,14 +351,14 @@ if [[ $PROXY_RUNNING -eq 0 ]]; then
   OLLAMA_BIND="$OLLAMA_BIND" \
   BRIDGE_API_KEY_FILE="$API_KEY_FILE" \
   ENABLE_EMBEDDINGS="$ENABLE_EMBEDDINGS" \
-  python3 "$ROOT/src/bridge_proxy.py" > "$BRIDGE_STATE_DIR/proxy.log" 2>&1 &
+  python3 "$APP_DIR/src/bridge_proxy.py" > "$BRIDGE_STATE_DIR/proxy.log" 2>&1 &
   PROXY_PID=$!
   echo "$PROXY_PID" > "$BRIDGE_STATE_DIR/proxy.pid"
-  python3 "$ROOT/src/supervisor.py" register proxy "$PROXY_PID" "bridge_proxy.py" 2>/dev/null || true
+  python3 "$APP_DIR/src/supervisor.py" register proxy "$PROXY_PID" "bridge_proxy.py" 2>/dev/null || true
 
   READY=0
   for _ in {1..15}; do
-    if curl -fs "http://$BRIDGE_BIND/healthz" >/dev/null 2>&1; then
+    if curl -fs -H "Authorization: Bearer $(<"$API_KEY_FILE")" "http://$BRIDGE_BIND/healthz" >/dev/null 2>&1; then
       READY=1
       break
     fi
@@ -294,11 +376,15 @@ log_stage "tunnel" "Establishing Cloudflare Tunnel in $ACTIVE_MODE mode"
 
 TUNNEL_URL=""
 if [[ "$ACTIVE_MODE" == "named" ]]; then
+  if ! cloudflared tunnel run --help 2>&1 | grep -q -- '--token-file'; then
+    echo "[ERROR] [STAGE:tunnel] Installed cloudflared does not support --token-file. Upgrade cloudflared to use named tunnel mode." >&2
+    exit 1
+  fi
   echo "Running named tunnel with token file..."
   cloudflared tunnel run --token-file "$TOKEN_FILE" > "$BRIDGE_STATE_DIR/cloudflared.log" 2>&1 &
   CF_PID=$!
   echo "$CF_PID" > "$BRIDGE_STATE_DIR/cloudflared.pid"
-  python3 "$ROOT/src/supervisor.py" register cloudflared "$CF_PID" "cloudflared" 2>/dev/null || true
+  python3 "$APP_DIR/src/supervisor.py" register cloudflared "$CF_PID" "cloudflared" 2>/dev/null || true
   sleep 3
   if ! kill -0 "$CF_PID" 2>/dev/null; then
     echo "[ERROR] [STAGE:tunnel] Named tunnel process exited immediately. Invalid token or network failure." >&2
@@ -310,7 +396,7 @@ else
   cloudflared tunnel --url "http://$BRIDGE_BIND" > "$BRIDGE_STATE_DIR/cloudflared.log" 2>&1 &
   CF_PID=$!
   echo "$CF_PID" > "$BRIDGE_STATE_DIR/cloudflared.pid"
-  python3 "$ROOT/src/supervisor.py" register cloudflared "$CF_PID" "cloudflared" 2>/dev/null || true
+  python3 "$APP_DIR/src/supervisor.py" register cloudflared "$CF_PID" "cloudflared" 2>/dev/null || true
 
   # Scrape trycloudflare.com URL from log
   for _ in {1..30}; do
@@ -359,7 +445,7 @@ echo "  export COLAB_BRIDGE_API_KEY=\"<your-bridge-key>\""
 echo ""
 
 # Generate client config
-python3 "$ROOT/scripts/generate-client-config.py" \
+python3 "$APP_DIR/scripts/generate-client-config.py" \
   --model "$SELECTED_MODEL" \
   --context "$SELECTED_CONTEXT" \
   --mode "$ACTIVE_MODE"
@@ -371,4 +457,4 @@ fi
 
 # --- STAGE: Supervise ---
 log_stage "supervise" "Monitoring background processes"
-exec python3 "$ROOT/src/supervisor.py"
+exec python3 "$APP_DIR/src/supervisor.py"

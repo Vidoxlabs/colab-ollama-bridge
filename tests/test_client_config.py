@@ -93,3 +93,11 @@ def test_example_files_parseable():
     mcp_data = json.loads(mcp_file.read_text())
     assert "mcpServers" in mcp_data
     assert "colab" in mcp_data["mcpServers"]
+
+
+def test_colab_mcp_config_pinned():
+    mcp_file = EXAMPLES_DIR / "antigravity.mcp_config.json"
+    mcp_data = json.loads(mcp_file.read_text())
+    args = mcp_data["mcpServers"]["colab"]["args"]
+    assert any("@v1.0.2" in arg for arg in args), "colab-mcp should be pinned to @v1.0.2"
+    assert not any("@main" in arg for arg in args), "colab-mcp must not use unpinned @main"
