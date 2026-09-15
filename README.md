@@ -47,7 +47,7 @@ flowchart TD
 Run the pinned bootstrap entry point:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.0/scripts/bootstrap.sh | \
+curl -fsSL https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.1/scripts/bootstrap.sh | \
   BRIDGE_API_KEY="your-secure-bridge-api-key-here" \
   bash
 ```
