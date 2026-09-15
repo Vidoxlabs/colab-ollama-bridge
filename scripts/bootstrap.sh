@@ -21,7 +21,7 @@ if [[ -n "$SCRIPT_SOURCE" && "$SCRIPT_SOURCE" != "-" && "$SCRIPT_SOURCE" != "/de
 fi
 
 # Distribution defaults & trust root
-DEFAULT_DIST_URL="https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.0"
+DEFAULT_DIST_URL="https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.1"
 RUNTIME_MANIFEST_SHA256="6d084f3816c2063588b67e5109c7b38c009832ee3e4cc8b4a6ac76e42517a43e"
 
 if [[ -n "${BRIDGE_DIST_URL:-}" && "$BRIDGE_DIST_URL" != "$DEFAULT_DIST_URL" ]]; then
