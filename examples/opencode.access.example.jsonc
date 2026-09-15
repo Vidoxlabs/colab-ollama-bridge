@@ -1,5 +1,36 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  // ==============================================================================
+  // Colab Ollama Bridge — Named Tunnel + Cloudflare Access Configuration Example
+  // ==============================================================================
+  //
+  // 1. Persistent Named Tunnel Environment Setup:
+  //    export COLAB_OLLAMA_BASE_URL="https://ollama.example.com"
+  //    export COLAB_BRIDGE_API_KEY="<your-generated-bridge-api-key>"
+  //    export CF_ACCESS_CLIENT_ID="<your-cloudflare-service-token-client-id>"
+  //    export CF_ACCESS_CLIENT_SECRET="<your-cloudflare-service-token-client-secret>"
+  //
+  // 2. Model Selection & Discovery:
+  //    curl -H "Authorization: Bearer $COLAB_BRIDGE_API_KEY" \
+  //         -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+  //         -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+  //         $COLAB_OLLAMA_BASE_URL/v1/models
+  //
+  // 3. Running an OpenCode Request:
+  //    opencode run -m colab-ollama/qwen2.5-coder:14b "Review this pull request"
+  //
+  // 4. Changing Model on Named Tunnel:
+  //    Update the model entry below to match the model pulled in Colab.
+  //
+  // 5. Recovery after Colab Disconnects:
+  //    When Colab restarts with the same TUNNEL_TOKEN, it reconnects to the same
+  //    named tunnel hostname. Once supervisor reports healthy, requests resume
+  //    transparently without changing OpenCode config or environment variables.
+  //
+  // 6. Security Note:
+  //    Zero credentials or Access secrets are committed. All values resolve from
+  //    the operator's local environment via OpenCode variable interpolation.
+  //
   "provider": {
     "colab-ollama": {
       "npm": "@ai-sdk/openai-compatible",

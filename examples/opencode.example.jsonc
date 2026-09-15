@@ -1,11 +1,37 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  // ==============================================================================
+  // Colab Ollama Bridge — OpenCode Quick Tunnel Configuration Example
+  // ==============================================================================
+  //
+  // 1. Quick-Tunnel Runtime Environment Setup:
+  //    export COLAB_OLLAMA_BASE_URL="https://<random>.trycloudflare.com"
+  //    export COLAB_BRIDGE_API_KEY="<your-generated-bridge-api-key>"
+  //
+  // 2. Model Discovery:
+  //    curl -H "Authorization: Bearer $COLAB_BRIDGE_API_KEY" $COLAB_OLLAMA_BASE_URL/v1/models
+  //    opencode models | grep colab-ollama
+  //
+  // 3. Running an OpenCode Request:
+  //    opencode run -m colab-ollama/qwen2.5-coder:7b "Write a Python quicksort"
+  //
+  // 4. Changing the Selected Model:
+  //    Update the model key below or override on CLI: -m colab-ollama/<model-tag>
+  //    (Ensure the model has been pulled in Ollama on the Colab instance)
+  //
+  // 5. Recovering after Colab Disconnects:
+  //    If Colab disconnects or kernel restarts, re-run notebook bootstrap, obtain
+  //    the new trycloudflare URL, and re-export COLAB_OLLAMA_BASE_URL.
+  //
+  // 6. Disabling / Removing the Provider:
+  //    Remove or comment out the "colab-ollama" object from your opencode.json.
+  //
   "provider": {
     "colab-ollama": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "Colab Ollama Bridge",
       "options": {
-        // Quick Tunnel endpoint emitted by colab-ollama-bridge
+        // Dynamic environment variable substitution prevents hardcoding ephemeral URLs
         "baseURL": "{env:COLAB_OLLAMA_BASE_URL}/v1",
         "apiKey": "{env:COLAB_BRIDGE_API_KEY}"
       },
