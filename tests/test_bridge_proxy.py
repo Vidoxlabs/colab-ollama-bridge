@@ -349,6 +349,8 @@ def test_header_hygiene_and_access_stripping(servers):
     assert "x-custom-hop" not in received
     # Safe header should pass through
     assert received.get("x-safe-header") == "safe-value"
+    # Host header must be rewritten to upstream host/port so Ollama origin validation succeeds
+    assert received.get("host") == f"{ProxyHandler.upstream_host}:{ProxyHandler.upstream_port}"
 
 
 def test_upstream_500_forwarding(servers):

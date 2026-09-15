@@ -271,7 +271,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 if token_clean:
                     custom_connection_hops.add(token_clean)
 
-        # Filter headers: strip hop-by-hop, connection tokens, client Authorization, and Cloudflare Access headers
+        # Filter headers: strip hop-by-hop, connection tokens, client Authorization, Host (rewritten to upstream), and Cloudflare Access headers
         forward_headers: dict[str, str] = {}
         for header, value in self.headers.items():
             lower_header = header.lower()
@@ -279,10 +279,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 lower_header in HOP_BY_HOP_HEADERS
                 or lower_header in custom_connection_hops
                 or lower_header == "authorization"
+                or lower_header == "host"
                 or lower_header.startswith("cf-access-")
             ):
                 continue
             forward_headers[header] = value
+
+        forward_headers["Host"] = f"{self.upstream_host}:{self.upstream_port}"
 
         conn: http.client.HTTPConnection | None = None
         try:

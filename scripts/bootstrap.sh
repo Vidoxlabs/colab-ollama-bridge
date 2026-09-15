@@ -22,7 +22,7 @@ fi
 
 # Distribution defaults & trust root
 DEFAULT_DIST_URL="https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.0"
-RUNTIME_MANIFEST_SHA256="f386aac3329a676e04687f46b3cb93c1169b3ee30967f3a56cad2a65783cad1d"
+RUNTIME_MANIFEST_SHA256="6d084f3816c2063588b67e5109c7b38c009832ee3e4cc8b4a6ac76e42517a43e"
 
 if [[ -n "${BRIDGE_DIST_URL:-}" && "$BRIDGE_DIST_URL" != "$DEFAULT_DIST_URL" ]]; then
   echo "[WARN] [STAGE:preflight] Custom BRIDGE_DIST_URL specified ($BRIDGE_DIST_URL); changing trust root." >&2
