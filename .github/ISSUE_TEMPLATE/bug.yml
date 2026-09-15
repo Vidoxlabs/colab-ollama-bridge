@@ -1,0 +1,42 @@
+name: Bug Report
+description: Report a reproducible defect in colab-ollama-bridge
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security notice**: Never include actual API keys, tunnel tokens, Access secrets, private hostnames, or private IP addresses in bug reports. Sanitized logs only.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment & Hardware
+      description: "E.g., Google Colab (T4 / L4 / A100), Ubuntu 24.04 (RTX 4090), etc."
+      placeholder: "Google Colab T4 GPU"
+    validations:
+      required: true
+  - type: dropdown
+    id: tunnel_mode
+    attributes:
+      label: Tunnel Mode
+      options:
+        - Quick Tunnel
+        - Named Tunnel (Cloudflare Access)
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: What steps led to the issue?
+      placeholder: "1. Run cell 4...\n2. Error at stage: ..."
+    validations:
+      required: true
+  - type: textarea
+    id: sanitized_logs
+    attributes:
+      label: Sanitized Output / Logs
+      description: Paste relevant sanitized output (ensure no secrets or sensitive IPs are included).
+      render: shell
+    validations:
+      required: false

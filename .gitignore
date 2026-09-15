@@ -1,0 +1,41 @@
+# Secrets and credentials
+*.env
+*.env.*
+*.token
+*.key
+*.pem
+credentials.json
+service_account.json
+
+# Process state and runtime logs
+*.log
+*.pid
+*state.json
+/tmp/bridge_state/
+
+# Models and weights
+*.bin
+*.gguf
+*.safetensors
+*.onnx
+
+# Python & environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.venv/
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Operating system
+.DS_Store
+Thumbs.db

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "colab-ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Colab Ollama Bridge",
+      "options": {
+        // Quick Tunnel endpoint emitted by colab-ollama-bridge
+        "baseURL": "{env:COLAB_OLLAMA_BASE_URL}/v1",
+        "apiKey": "{env:COLAB_BRIDGE_API_KEY}"
+      },
+      "models": {
+        "qwen2.5-coder:7b": {
+          "name": "Qwen 2.5 Coder 7B (Colab)",
+          "limit": {
+            "context": 16384,
+            "output": 8192
+          }
+        }
+      }
+    }
+  }
+}

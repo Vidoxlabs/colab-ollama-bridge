@@ -1,0 +1,20 @@
+# Auto-normalize line endings
+* text=auto eol=lf
+
+# Explicit binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.tar binary
+*.tar.gz binary
+*.bin binary
+
+# Python
+*.py diff=python
+
+# Shell
+*.sh text eol=lf
+*.bats text eol=lf
+
+# Jupyter Notebook diff normalization
+*.ipynb diff=json

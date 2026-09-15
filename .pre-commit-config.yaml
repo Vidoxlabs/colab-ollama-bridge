@@ -1,0 +1,21 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: validate-notebook
+        name: Validate Notebook Safety
+        entry: python3 scripts/validate-notebook.py
+        language: system
+        files: ^notebooks/.*\.ipynb$
+
+      - id: scan-public-tree
+        name: Zero-Leak Public Tree Scanner
+        entry: bash scripts/scan-public-tree.sh
+        language: system
+        pass_filenames: false

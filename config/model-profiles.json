@@ -1,0 +1,42 @@
+{
+  "$schema": "./model-profiles.schema.json",
+  "version": "1.0",
+  "profiles": [
+    {
+      "min_vram_mib": 36864,
+      "gpu_family": "A100",
+      "typical_vram_gb": 40,
+      "model": "qwen2.5-coder:32b",
+      "context_length": 16384,
+      "rationale": "High-quality coding model with usable KV-cache headroom"
+    },
+    {
+      "min_vram_mib": 20480,
+      "gpu_family": "L4",
+      "typical_vram_gb": 24,
+      "model": "qwen2.5-coder:14b",
+      "context_length": 16384,
+      "rationale": "Avoids 32B weight pressure and partial CPU offload"
+    },
+    {
+      "min_vram_mib": 12288,
+      "gpu_family": "T4",
+      "typical_vram_gb": 16,
+      "model": "qwen2.5-coder:7b",
+      "context_length": 16384,
+      "rationale": "Fits comfortably enough for interactive coding"
+    },
+    {
+      "min_vram_mib": 0,
+      "gpu_family": "Other",
+      "typical_vram_gb": 8,
+      "model": "qwen2.5-coder:3b",
+      "context_length": 8192,
+      "rationale": "Best-effort fallback, clearly reported"
+    }
+  ],
+  "default_fallback": {
+    "model": "qwen2.5-coder:3b",
+    "context_length": 8192
+  }
+}
