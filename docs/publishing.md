@@ -41,13 +41,24 @@ gh repo edit Vidoxlabs/colab-ollama-bridge \
 
 ---
 
-## 3. Branch Protection & Ruleset Configuration
+## 3. Branch & Tag Ruleset Protection
 
-Apply a repository ruleset for `main`:
-1. Require pull requests before merging.
-2. Require status checks to pass (`validate / check`).
-3. Require linear history.
-4. Block force pushes and branch deletion.
+Configure repository rulesets (or branch protection rules) for `main` and release tags `v*`:
+
+### `main` Branch Ruleset
+1. Require status check `check` (from `.github/workflows/validate.yml`) before merging.
+2. Require linear history (squash or rebase).
+3. Block force pushes and branch deletion.
+4. Require pull request reviews with CODEOWNERS enforcement (`* @Vioxniv`).
+
+### `v*` Tag Protection Ruleset
+1. Prevent tag deletion for `refs/tags/v*`.
+2. Prevent updating (force-moving) existing `refs/tags/v*` tags.
+3. Restrict tag creation in `refs/tags/v*` to repository maintainers/admins.
+
+> [!NOTE]
+> **Plan Limitations**:
+> GitHub Free private repositories have limited ruleset support. Operators should check **Settings > Rules > Rulesets** to verify feature availability, or upgrade organization plan if mandatory status check enforcement is required in private state before public transition.
 
 ---
 
@@ -60,7 +71,7 @@ Before public switch or tag creation, execute the full validation gate locally o
 uv run pytest -v
 uv run ruff check .
 uv run ruff format --check .
-bats tests/test_bootstrap.bats
+bats tests/*.bats
 python3 scripts/validate-notebook.py notebooks/colab_ollama.ipynb
 
 # Run full tree and history scanner
@@ -75,23 +86,33 @@ make check
 
 ## 5. Transition to Public Visibility
 
-Only after operator review and confirmation of clean scan receipts:
+Only after operator review, candidate commit verification, and confirmation of clean scan receipts:
 
 ```bash
-# Operator confirmation required
-gh repo edit Vidoxlabs/colab-ollama-bridge --visibility public
+# Explicit operator confirmation and consequence acceptance required
+gh repo edit Vidoxlabs/colab-ollama-bridge \
+  --visibility public \
+  --accept-visibility-change-consequences
 ```
 
 ---
 
 ## 6. Release Tagging & Publication
 
+Release tags must be annotated to preserve tagger identity, date, and release notes:
+
 ```bash
-# Create annotated tag
+# 1. Create annotated release tag
 git tag -a v0.1.0 -m "Release v0.1.0: Colab Ollama Bridge initial release"
+
+# Note: If GPG or SSH tag signing is configured on your workstation, use signed tags (-s):
+# git tag -s v0.1.0 -m "Release v0.1.0: Colab Ollama Bridge initial release"
+# (Only claim signed release status if verified via 'git tag -v v0.1.0')
+
+# 2. Push tag to trigger release workflow
 git push origin v0.1.0
 
-# GitHub Actions release.yml workflow triggers on v* tags and creates the release
+# GitHub Actions release.yml workflow triggers on v* tags, verifies embedded runtime manifest digest, and generates release-SHA256SUMS.txt
 ```
 
 ---

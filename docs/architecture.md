@@ -103,6 +103,8 @@ For headless hosts and Google Colab execution without cloning the repository, `s
 curl -fsSL https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.0/scripts/bootstrap.sh | bash
 ```
 When running outside a Git checkout, the bootstrap script:
-1. Downloads runtime assets (`model-profiles.json`, `bridge_proxy.py`, `supervisor.py`, `generate-client-config.py`) and `SHA256SUMS.txt` from `BRIDGE_DIST_URL` (defaulting to the canonical GitHub release).
-2. Performs cryptographic SHA-256 integrity verification before starting any service.
-3. Fails closed on any hash mismatch, missing asset, or network failure.
+1. Downloads `runtime-SHA256SUMS.txt` from `BRIDGE_DIST_URL` (defaulting to the immutable canonical release tag `v0.1.0`).
+2. Authenticates `runtime-SHA256SUMS.txt` against the expected digest embedded in `bootstrap.sh`.
+3. Downloads runtime assets (`config/model-profiles.json`, `src/bridge_proxy.py`, `src/supervisor.py`, `scripts/generate-client-config.py`).
+4. Performs cryptographic SHA-256 integrity verification against the authenticated manifest before executing any service.
+5. Fails closed on any manifest tamper, hash mismatch, missing asset, or network failure.

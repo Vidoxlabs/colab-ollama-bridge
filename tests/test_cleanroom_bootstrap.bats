@@ -16,15 +16,21 @@ setup() {
   cp "$REPO_ROOT/src/supervisor.py" "$DIST_DIR/src/"
   cp "$REPO_ROOT/scripts/generate-client-config.py" "$DIST_DIR/scripts/"
 
-  # Generate valid SHA256SUMS.txt
+  # Generate valid runtime-SHA256SUMS.txt
   (
     cd "$DIST_DIR"
     if command -v sha256sum >/dev/null 2>&1; then
-      sha256sum config/model-profiles.json src/bridge_proxy.py src/supervisor.py scripts/generate-client-config.py > SHA256SUMS.txt
+      sha256sum config/model-profiles.json src/bridge_proxy.py src/supervisor.py scripts/generate-client-config.py > runtime-SHA256SUMS.txt
     else
-      shasum -a 256 config/model-profiles.json src/bridge_proxy.py src/supervisor.py scripts/generate-client-config.py > SHA256SUMS.txt
+      shasum -a 256 config/model-profiles.json src/bridge_proxy.py src/supervisor.py scripts/generate-client-config.py > runtime-SHA256SUMS.txt
     fi
   )
+  if command -v sha256sum >/dev/null 2>&1; then
+    TEST_MANIFEST_SHA256=$(sha256sum "$DIST_DIR/runtime-SHA256SUMS.txt" | awk '{print $1}')
+  else
+    TEST_MANIFEST_SHA256=$(shasum -a 256 "$DIST_DIR/runtime-SHA256SUMS.txt" | awk '{print $1}')
+  fi
+  export BRIDGE_RUNTIME_MANIFEST_SHA256="$TEST_MANIFEST_SHA256"
 
   # Start mock HTTP server for distribution assets
   PORT_FILE="$CLEAN_TMP_DIR/server_port.txt"
@@ -152,8 +158,8 @@ EOF
 
 @test "clean-room stdin bootstrap fails closed when distribution asset is missing" {
   cd "$CLEAN_TMP_DIR"
-  # Delete SHA256SUMS.txt from distribution
-  rm -f "$DIST_DIR/SHA256SUMS.txt"
+  # Delete runtime-SHA256SUMS.txt from distribution
+  rm -f "$DIST_DIR/runtime-SHA256SUMS.txt"
 
   cat << 'EOF' > "$SHIM_DIR/curl"
 #!/bin/bash
@@ -164,4 +170,30 @@ EOF
   run bash -c "cat '$REPO_ROOT/scripts/bootstrap.sh' | bash"
   [ "$status" -ne 0 ]
   [[ "$output" =~ "Failed to download" || "$output" =~ "missing" ]]
+}
+
+@test "clean-room stdin bootstrap fails closed when runtime manifest is altered despite consistent asset hashes" {
+  cd "$CLEAN_TMP_DIR"
+  # Tamper with an asset AND regenerate runtime-SHA256SUMS.txt so asset hashes inside it are internally consistent
+  echo "# tampered asset" >> "$DIST_DIR/src/bridge_proxy.py"
+  (
+    cd "$DIST_DIR"
+    if command -v sha256sum >/dev/null 2>&1; then
+      sha256sum config/model-profiles.json src/bridge_proxy.py src/supervisor.py scripts/generate-client-config.py > runtime-SHA256SUMS.txt
+    else
+      shasum -a 256 config/model-profiles.json src/bridge_proxy.py src/supervisor.py scripts/generate-client-config.py > runtime-SHA256SUMS.txt
+    fi
+  )
+  # Unset test override so bootstrap enforces its embedded trust root
+  unset BRIDGE_RUNTIME_MANIFEST_SHA256
+
+  cat << 'EOF' > "$SHIM_DIR/curl"
+#!/bin/bash
+exec /usr/bin/curl "$@"
+EOF
+  chmod +x "$SHIM_DIR/curl"
+
+  run bash -c "cat '$REPO_ROOT/scripts/bootstrap.sh' | bash"
+  [ "$status" -ne 0 ]
+  [[ "$output" =~ "Runtime manifest digest" || "$output" =~ "does not match expected trust root" ]]
 }

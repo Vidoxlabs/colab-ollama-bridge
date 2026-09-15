@@ -53,7 +53,17 @@ jobs:
           fi
           echo "Release tag validation passed: $GITHUB_REF_NAME matches pyproject.toml and CHANGELOG.md."
 
-      - name: Generate SHA-256 Checksums
+      - name: Verify embedded runtime manifest digest in bootstrap.sh
+        run: |
+          EXPECTED_DIGEST=$(sha256sum runtime-SHA256SUMS.txt | awk '{print $1}')
+          EMBEDDED_DIGEST=$(grep '^RUNTIME_MANIFEST_SHA256=' scripts/bootstrap.sh | cut -d'"' -f2)
+          if [[ "$EXPECTED_DIGEST" != "$EMBEDDED_DIGEST" ]]; then
+            echo "[ERROR] Embedded RUNTIME_MANIFEST_SHA256 in scripts/bootstrap.sh ($EMBEDDED_DIGEST) does not match runtime-SHA256SUMS.txt ($EXPECTED_DIGEST)" >&2
+            exit 1
+          fi
+          echo "Runtime manifest embedded digest verified: $EMBEDDED_DIGEST"
+
+      - name: Generate Release Artifacts and Checksums
         run: |
           mkdir -p dist/config dist/src dist/scripts
           cp config/model-profiles.json dist/config/
@@ -61,27 +71,38 @@ jobs:
           cp src/supervisor.py dist/src/
           cp scripts/generate-client-config.py dist/scripts/
           cp scripts/bootstrap.sh dist/scripts/
+          cp scripts/bootstrap.sh dist/
+          cp runtime-SHA256SUMS.txt dist/
+
+          # Package release tarball
+          tar -czf "dist/colab-ollama-bridge-${GITHUB_REF_NAME}.tar.gz" \
+            --exclude='.git' \
+            --exclude='.venv' \
+            --exclude='dist' \
+            --exclude='__pycache__' \
+            .
+
           (
             cd dist
             sha256sum \
+              "colab-ollama-bridge-${GITHUB_REF_NAME}.tar.gz" \
+              bootstrap.sh \
+              runtime-SHA256SUMS.txt \
               config/model-profiles.json \
               src/bridge_proxy.py \
               src/supervisor.py \
-              scripts/generate-client-config.py \
-              scripts/bootstrap.sh > SHA256SUMS.txt
-            cat SHA256SUMS.txt
+              scripts/generate-client-config.py > release-SHA256SUMS.txt
+            cat release-SHA256SUMS.txt
           )
-          # Top-level convenience copies in dist root
-          cp dist/scripts/bootstrap.sh dist/
-          cp dist/config/model-profiles.json dist/
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/SHA256SUMS.txt
+            dist/release-SHA256SUMS.txt
+            dist/runtime-SHA256SUMS.txt
+            dist/colab-ollama-bridge-*.tar.gz
             dist/bootstrap.sh
-            dist/model-profiles.json
             dist/config/*
             dist/src/*
             dist/scripts/*

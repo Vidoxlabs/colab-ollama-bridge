@@ -44,6 +44,21 @@
 1. **No Silent Downgrades**: If a named tunnel token is invalid or fails to connect, the system halts immediately. It never silently falls back to an unauthenticated or Quick Tunnel.
 2. **Missing Credentials**: Missing or empty API keys abort startup before any tunnel or proxy process is launched.
 3. **Route Allowlist**: Any unmapped route returns HTTP 404. Unauthenticated requests return generic HTTP 401 without stack traces.
+4. **Manifest Tampering**: Any modification to runtime assets or the runtime manifest causes bootstrap to abort before starting any Python processes.
+
+---
+
+## 5. Distribution Integrity & Checksum Trust Root
+
+When `scripts/bootstrap.sh` runs outside of a Git checkout (e.g. piped via `curl ... | bash` in a fresh Colab runtime or container):
+1. **Initial Trust Root**: `bootstrap.sh` is retrieved by the operator from an immutable Git release tag (`v0.1.0`) or commit hash.
+2. **Embedded Manifest Digest**: `bootstrap.sh` embeds the exact expected SHA-256 digest of `runtime-SHA256SUMS.txt`.
+3. **Manifest Authentication**: `bootstrap.sh` downloads `runtime-SHA256SUMS.txt` and verifies its SHA-256 digest against `RUNTIME_MANIFEST_SHA256` before downloading assets. If the manifest has been modified, execution halts immediately.
+4. **Asset Integrity**: Each downloaded runtime asset (`config/model-profiles.json`, `src/bridge_proxy.py`, `src/supervisor.py`, `scripts/generate-client-config.py`) is verified against the authenticated manifest.
+5. **Separation of Checksum Artifacts**:
+   - `runtime-SHA256SUMS.txt`: Dedicated, committed manifest for runtime assets.
+   - `release-SHA256SUMS.txt`: Generated during CI release packaging for release tarballs and archives.
+6. **Operator Trust Path**: Cryptographic hashing guarantees tamper detection; operator trust is completed by fetching `bootstrap.sh` from protected, annotated release tags (`refs/tags/v*`) with optional cryptographic tag signatures.
 
 ---
 

@@ -20,8 +20,16 @@ if [[ -n "$SCRIPT_SOURCE" && "$SCRIPT_SOURCE" != "-" && "$SCRIPT_SOURCE" != "/de
   fi
 fi
 
-# Distribution defaults
+# Distribution defaults & trust root
 DEFAULT_DIST_URL="https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.0"
+RUNTIME_MANIFEST_SHA256="f386aac3329a676e04687f46b3cb93c1169b3ee30967f3a56cad2a65783cad1d"
+
+if [[ -n "${BRIDGE_DIST_URL:-}" && "$BRIDGE_DIST_URL" != "$DEFAULT_DIST_URL" ]]; then
+  echo "[WARN] [STAGE:preflight] Custom BRIDGE_DIST_URL specified ($BRIDGE_DIST_URL); changing trust root." >&2
+  if [[ -n "${BRIDGE_RUNTIME_MANIFEST_SHA256:-}" ]]; then
+    RUNTIME_MANIFEST_SHA256="$BRIDGE_RUNTIME_MANIFEST_SHA256"
+  fi
+fi
 BRIDGE_DIST_URL="${BRIDGE_DIST_URL:-$DEFAULT_DIST_URL}"
 
 # --- Configuration & Defaults ---
@@ -191,12 +199,28 @@ else
   APP_DIR="$BRIDGE_STATE_DIR/assets"
   mkdir -p "$APP_DIR/config" "$APP_DIR/src" "$APP_DIR/scripts"
 
-  echo "Fetching distribution manifest from $BRIDGE_DIST_URL..."
-  SUM_FILE="$APP_DIR/SHA256SUMS.txt"
-  if ! curl -fsSL "$BRIDGE_DIST_URL/SHA256SUMS.txt" -o "$SUM_FILE"; then
-    echo "[ERROR] [STAGE:preflight] Failed to download SHA256SUMS.txt from $BRIDGE_DIST_URL." >&2
+  echo "Fetching runtime distribution manifest from $BRIDGE_DIST_URL..."
+  SUM_FILE="$APP_DIR/runtime-SHA256SUMS.txt"
+  if ! curl -fsSL "$BRIDGE_DIST_URL/runtime-SHA256SUMS.txt" -o "$SUM_FILE"; then
+    echo "[ERROR] [STAGE:preflight] Failed to download runtime-SHA256SUMS.txt from $BRIDGE_DIST_URL." >&2
     exit 1
   fi
+
+  echo "Authenticating runtime manifest against embedded trust root..."
+  if command -v sha256sum >/dev/null 2>&1; then
+    MANIFEST_DIGEST=$(sha256sum "$SUM_FILE" | awk '{print $1}')
+  elif command -v shasum >/dev/null 2>&1; then
+    MANIFEST_DIGEST=$(shasum -a 256 "$SUM_FILE" | awk '{print $1}')
+  else
+    echo "[ERROR] [STAGE:preflight] Neither sha256sum nor shasum is available." >&2
+    exit 1
+  fi
+
+  if [[ "$MANIFEST_DIGEST" != "$RUNTIME_MANIFEST_SHA256" ]]; then
+    echo "[ERROR] [STAGE:preflight] Runtime manifest digest ($MANIFEST_DIGEST) does not match expected trust root ($RUNTIME_MANIFEST_SHA256)." >&2
+    exit 1
+  fi
+  echo "Runtime distribution manifest authenticated."
 
   for asset in "${REQUIRED_ASSETS[@]}"; do
     dest="$APP_DIR/$asset"
