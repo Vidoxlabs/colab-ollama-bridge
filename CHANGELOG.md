@@ -5,6 +5,18 @@ All notable changes to `colab-ollama-bridge` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-09-15
+
+### Fixed
+- Upstream Ollama origin rejection: rewrite `Host` header to upstream `host:port` (`127.0.0.1:11434`) in `src/bridge_proxy.py` to satisfy Ollama 403 Forbidden origin validation when accessed via Cloudflare Tunnels.
+
+### Changed
+- Bumped default distribution URL in `scripts/bootstrap.sh` to pinned immutable release tag `v0.1.1` and updated embedded runtime manifest SHA-256 digest (`6d084f38...`).
+
+### Added
+- Documented live verification on NVIDIA A100-SXM4-40GB GPU with `qwen2.5-coder:7b` and `qwen2.5-coder:1.5b`.
+- Expanded OpenCode client configuration guidance for model discovery, custom model overrides, and connection recovery.
+
 ## [0.1.0] - 2026-09-15
 
 ### Added

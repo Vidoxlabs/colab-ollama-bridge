@@ -73,6 +73,12 @@ The bridge proxy strictly enforces the following route matrix:
 - **Cache-Control**: Every proxy response includes `Cache-Control: no-store` to prevent caching of inferences, model discovery, or health status.
 - **Payload Cap**: Request bodies exceeding 8 MiB return HTTP 413 Payload Too Large.
 - **Streaming**: Server-Sent Events (`text/event-stream`) are streamed directly chunk-by-chunk without whole-response buffering.
+- **Model Discovery & Inventory Authority**:
+  - `GET /v1/models` is the sole authoritative source for models currently installed and available in the bridge runtime.
+  - `config/model-profiles.json` governs only the initial bootstrap model pulled automatically upon first boot based on GPU VRAM.
+  - Static client configuration examples (`examples/opencode.example.jsonc`) are illustrative templates; they do not define or limit the server's runtime model inventory.
+  - Operators and clients may select or run any model pulled into Ollama, subject to GPU memory capacity.
+  - The proxy strictly blocks native Ollama administrative routes (`/api/*`), preserving the OpenAI-compatible route boundary while ensuring safe dynamic discovery via `/v1/models`.
 
 ---
 
@@ -100,10 +106,10 @@ The inference bridge operates independently from Google's official Colab MCP ser
 
 For headless hosts and Google Colab execution without cloning the repository, `scripts/bootstrap.sh` supports standard stdin piping:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.0/scripts/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.1/scripts/bootstrap.sh | bash
 ```
 When running outside a Git checkout, the bootstrap script:
-1. Downloads `runtime-SHA256SUMS.txt` from `BRIDGE_DIST_URL` (defaulting to the immutable canonical release tag `v0.1.0`).
+1. Downloads `runtime-SHA256SUMS.txt` from `BRIDGE_DIST_URL` (defaulting to the immutable canonical release tag `v0.1.1`).
 2. Authenticates `runtime-SHA256SUMS.txt` against the expected digest embedded in `bootstrap.sh`.
 3. Downloads runtime assets (`config/model-profiles.json`, `src/bridge_proxy.py`, `src/supervisor.py`, `scripts/generate-client-config.py`).
 4. Performs cryptographic SHA-256 integrity verification against the authenticated manifest before executing any service.

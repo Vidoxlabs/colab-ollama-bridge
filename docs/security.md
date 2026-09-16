@@ -51,7 +51,7 @@
 ## 5. Distribution Integrity & Checksum Trust Root
 
 When `scripts/bootstrap.sh` runs outside of a Git checkout (e.g. piped via `curl ... | bash` in a fresh Colab runtime or container):
-1. **Initial Trust Root**: `bootstrap.sh` is retrieved by the operator from an immutable Git release tag (`v0.1.0`) or commit hash.
+1. **Initial Trust Root**: `bootstrap.sh` is retrieved by the operator from an immutable Git release tag (`v0.1.1`) or commit hash.
 2. **Embedded Manifest Digest**: `bootstrap.sh` embeds the exact expected SHA-256 digest of `runtime-SHA256SUMS.txt`.
 3. **Manifest Authentication**: `bootstrap.sh` downloads `runtime-SHA256SUMS.txt` and verifies its SHA-256 digest against `RUNTIME_MANIFEST_SHA256` before downloading assets. If the manifest has been modified, execution halts immediately.
 4. **Asset Integrity**: Each downloaded runtime asset (`config/model-profiles.json`, `src/bridge_proxy.py`, `src/supervisor.py`, `scripts/generate-client-config.py`) is verified against the authenticated manifest.
@@ -62,7 +62,7 @@ When `scripts/bootstrap.sh` runs outside of a Git checkout (e.g. piped via `curl
 
 ---
 
-## 5. Vulnerability Reporting
+## 6. Vulnerability Reporting
 
 If you identify a potential security issue or vulnerability in `colab-ollama-bridge`, please report it privately:
 - Use **GitHub Private Vulnerability Reporting** via the repository's **Security > Advisories** tab.

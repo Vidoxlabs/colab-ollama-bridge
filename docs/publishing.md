@@ -102,15 +102,15 @@ gh repo edit Vidoxlabs/colab-ollama-bridge \
 Release tags must be annotated to preserve tagger identity, date, and release notes:
 
 ```bash
-# 1. Create annotated release tag
-git tag -a v0.1.0 -m "Release v0.1.0: Colab Ollama Bridge initial release"
+# 1. Create annotated release tag (e.g., for v0.1.1)
+git tag -a v0.1.1 -m "Release v0.1.1: Ollama Host header forwarding fix"
 
 # Note: If GPG or SSH tag signing is configured on your workstation, use signed tags (-s):
-# git tag -s v0.1.0 -m "Release v0.1.0: Colab Ollama Bridge initial release"
-# (Only claim signed release status if verified via 'git tag -v v0.1.0')
+# git tag -s v0.1.1 -m "Release v0.1.1: Ollama Host header forwarding fix"
+# (Only claim signed release status if verified via 'git tag -v v0.1.1')
 
 # 2. Push tag to trigger release workflow
-git push origin v0.1.0
+git push origin v0.1.1
 
 # GitHub Actions release.yml workflow triggers on v* tags, verifies embedded runtime manifest digest, and generates release-SHA256SUMS.txt
 ```

@@ -149,3 +149,37 @@ def test_no_uncommitted_client_claims():
             text = doc_file.read_text(encoding="utf-8")
             assert "Open WebUI" not in text, f"{rel_path} claims uncommitted client Open WebUI"
             assert "Cursor" not in text, f"{rel_path} claims uncommitted client Cursor"
+
+
+def test_current_release_references_consistency():
+    """Operational documentation and bootstrap must agree on the current immutable release tag."""
+    import re
+
+    bootstrap_content = (REPO_ROOT / "scripts" / "bootstrap.sh").read_text(encoding="utf-8")
+    m = re.search(
+        r'DEFAULT_DIST_URL="https://raw\.githubusercontent\.com/Vidoxlabs/colab-ollama-bridge/(v[0-9]+\.[0-9]+\.[0-9]+)"',
+        bootstrap_content,
+    )
+    assert m, "scripts/bootstrap.sh must define DEFAULT_DIST_URL pointing to a version tag"
+    current_tag = m.group(1)
+
+    # 1. README quick start Option B
+    readme_content = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert f"colab-ollama-bridge/{current_tag}/scripts/bootstrap.sh" in readme_content, (
+        f"README.md quick start must point to current tag {current_tag}"
+    )
+
+    # 2. Architecture clean-room curl command
+    arch_content = (REPO_ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    assert f"colab-ollama-bridge/{current_tag}/scripts/bootstrap.sh" in arch_content, (
+        f"docs/architecture.md must point to current tag {current_tag}"
+    )
+    assert f"release tag `{current_tag}`" in arch_content, (
+        f"docs/architecture.md trust-root text must reference current tag {current_tag}"
+    )
+
+    # 3. Security Initial Trust Root
+    sec_content = (REPO_ROOT / "docs" / "security.md").read_text(encoding="utf-8")
+    assert f"release tag (`{current_tag}`)" in sec_content, (
+        f"docs/security.md trust-root text must reference current tag {current_tag}"
+    )

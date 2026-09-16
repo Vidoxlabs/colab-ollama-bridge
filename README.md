@@ -83,6 +83,14 @@ To override defaults, set these environment variables before running the bootstr
 
 ## Client Configuration (OpenCode)
 
+> [!TIP]
+> **Model Discovery & Inventory Authority**:
+> The models listed in client configuration examples below are **illustrative**. The sole authority for models currently available on the server is the authenticated endpoint:
+> ```bash
+> curl -s -H "Authorization: Bearer $COLAB_BRIDGE_API_KEY" "$COLAB_OLLAMA_BASE_URL/v1/models"
+> ```
+> While `config/model-profiles.json` selects the default model pulled during initial bootstrap, operators may pull and use any compatible model subject to GPU VRAM limits. The static configuration example does not restrict or define server model inventory. The bridge proxy intentionally restricts traffic to authenticated OpenAI-compatible routes (`/v1/*`), blocking native administrative routes (`/api/*`).
+
 ### 1. Quick Tunnel (Development)
 
 Export the endpoint and key in your local shell profile:

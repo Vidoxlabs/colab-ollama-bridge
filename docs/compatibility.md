@@ -6,13 +6,17 @@ This matrix tracks verified runtimes, tested hardware environments, and client c
 
 ## 1. Hardware & Runtime Platforms
 
-| Platform / Accelerator | Detected VRAM | Default Model | Verified Status | Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| **Google Colab Tesla T4** | ~15,109 MiB | `qwen2.5-coder:7b` | `LIVE_RUNTIME_VERIFICATION_REQUIRED` | Tested locally via synthetic fixture `nvidia-smi-t4.txt`. |
-| **Google Colab NVIDIA L4** | ~23,034 MiB | `qwen2.5-coder:14b` | `LIVE_RUNTIME_VERIFICATION_REQUIRED` | Tested locally via synthetic fixture `nvidia-smi-l4.txt`. |
-| **Google Colab NVIDIA A100** | ~40,960 MiB | `qwen2.5-coder:32b` | **Verified (Live)** | Validated live on NVIDIA A100-SXM4-40GB with `qwen2.5-coder:7b` and `1.5b`. |
-| **Ubuntu 22.04 / 24.04 LTS** | Any | Dynamic | `LIVE_RUNTIME_VERIFICATION_REQUIRED` | Standard headless Linux target for `scripts/bootstrap.sh`. |
-| **macOS (arm64)** | Host Apple Silicon | Fallback | **Verified (Local Dev)** | Full repository static checks, unit tests, bats suite, and loopback bridge verified. |
+| Platform / Accelerator | Detected VRAM | Recommended Profile | Recommended Profile Live-Verified | Hardware Live-Verified | Live-Tested Models | Verification Status | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Google Colab Tesla T4** | ~15,109 MiB | `qwen2.5-coder:7b` | `NO` | `NO` | None | `LIVE_RUNTIME_VERIFICATION_REQUIRED` | Tested locally via synthetic fixture `nvidia-smi-t4.txt`. |
+| **Google Colab NVIDIA L4** | ~23,034 MiB | `qwen2.5-coder:14b` | `NO` | `NO` | None | `LIVE_RUNTIME_VERIFICATION_REQUIRED` | Tested locally via synthetic fixture `nvidia-smi-l4.txt`. |
+| **Google Colab NVIDIA A100** | ~40,960 MiB | `qwen2.5-coder:32b` | `NO / UNKNOWN` | **YES** | `qwen2.5-coder:7b`, `1.5b` | **Hardware Verified (Live)** | Validated live on NVIDIA A100-SXM4-40GB; recommended 32B profile was not executed during live testing. |
+| **Ubuntu 22.04 / 24.04 LTS** | Any | Dynamic | `NO` | `NO` | None | `LIVE_RUNTIME_VERIFICATION_REQUIRED` | Standard headless Linux target for `scripts/bootstrap.sh`. |
+| **macOS (arm64)** | Apple Silicon | Fallback (`3b`) | `YES (Local)` | **YES (Local)** | `qwen2.5-coder:3b` | **Verified (Local Dev)** | Full repository static checks, unit tests, bats suite, and loopback bridge verified. |
+
+> [!NOTE]
+> **Hardware Verification vs. Model Profile Verification**:
+> Hardware verification confirms that the bridge proxy, supervisor, and Ollama service bind, authenticate, and forward inference traffic through Cloudflare Tunnel on the specific GPU host. It does **not** certify that the recommended default profile (e.g., 32B on A100) has been executed; recommended profiles represent conservative VRAM sizing guidelines from `config/model-profiles.json`. Only models explicitly listed under **Live-Tested Models** have completed verified end-to-end inference runs. T4 and L4 accelerators remain strictly marked `LIVE_RUNTIME_VERIFICATION_REQUIRED` until physically exercised.
 
 ---
 
