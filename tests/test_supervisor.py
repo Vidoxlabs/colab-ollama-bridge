@@ -14,6 +14,9 @@ def test_supervisor_registration_and_ownership(tmp_path: Path):
 
     # Start dummy process
     proc = subprocess.Popen(["sleep", "10"])
+    import time
+
+    time.sleep(0.1)  # Wait for process to fully spawn before parsing cmdline
     try:
         sup.register_process("test_sleep", proc.pid, "sleep")
         assert sup.verify_pid_ownership("test_sleep") is True
