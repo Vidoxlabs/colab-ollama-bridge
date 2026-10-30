@@ -164,7 +164,7 @@ EOF
 
 @test "bootstrap warns when MODEL_OVERRIDE exceeds conservative VRAM profile" {
   export BRIDGE_API_KEY="valid-secret-key-12345678"
-  export MODEL_OVERRIDE="qwen2.5-coder:32b"
+  export MODEL_OVERRIDE="qwen3-coder:30b"
 
   cat << 'EOF' > "$SHIM_DIR/curl"
 #!/bin/bash
@@ -173,7 +173,8 @@ EOF
   chmod +x "$SHIM_DIR/curl"
 
   run bash scripts/bootstrap.sh
-  [[ "$output" =~ "MODEL_OVERRIDE (qwen2.5-coder:32b) may exceed recommended VRAM on T4" ]]
+  echo "STATUS=$status OUTPUT=$output" >&3
+  [[ "$output" =~ "MODEL_OVERRIDE (qwen3-coder:30b) may exceed recommended VRAM on T4" ]]
 }
 
 @test "bootstrap refuses named mode if cloudflared lacks --token-file support" {
@@ -183,10 +184,7 @@ EOF
 
   cat << 'EOF' > "$SHIM_DIR/cloudflared"
 #!/bin/bash
-if [[ "$*" == *"tunnel run --help"* ]]; then
-  echo "Usage: cloudflared [options] (legacy without token-file)"
-  exit 0
-fi
+echo "Usage: cloudflared [options] (legacy version)"
 exit 0
 EOF
   chmod +x "$SHIM_DIR/cloudflared"

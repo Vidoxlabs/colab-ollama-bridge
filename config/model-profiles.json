@@ -6,8 +6,8 @@
       "min_vram_mib": 36864,
       "gpu_family": "A100",
       "typical_vram_gb": 40,
-      "model": "qwen2.5-coder:32b",
-      "context_length": 16384,
+      "model": "qwen3-coder:30b",
+      "context_length": 32768,
       "rationale": "High-quality coding model with usable KV-cache headroom"
     },
     {
@@ -15,14 +15,14 @@
       "gpu_family": "L4",
       "typical_vram_gb": 24,
       "model": "qwen2.5-coder:14b",
-      "context_length": 16384,
+      "context_length": 32768,
       "rationale": "Avoids 32B weight pressure and partial CPU offload"
     },
     {
       "min_vram_mib": 12288,
       "gpu_family": "T4",
       "typical_vram_gb": 16,
-      "model": "qwen2.5-coder:7b",
+      "model": "qwen3-coder:8b",
       "context_length": 16384,
       "rationale": "Fits comfortably enough for interactive coding"
     },

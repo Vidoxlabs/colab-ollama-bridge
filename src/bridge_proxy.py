@@ -24,7 +24,7 @@ DEFAULT_BRIDGE_BIND = "127.0.0.1:11435"
 DEFAULT_OLLAMA_BIND = "127.0.0.1:11434"
 DEFAULT_MAX_BODY_BYTES = 8 * 1024 * 1024  # 8 MiB
 CONNECT_TIMEOUT = 10.0
-READ_TIMEOUT = 300.0
+READ_TIMEOUT = float(os.environ.get("PROXY_READ_TIMEOUT", "600.0"))
 
 HOP_BY_HOP_HEADERS = {
     "connection",
@@ -160,13 +160,18 @@ class ProxyHandler(BaseHTTPRequestHandler):
             return True
         if method == "GET" and clean_path == "/v1/models":
             return True
+        if method == "GET" and clean_path.startswith("/v1/models/"):
+            model_id = urllib.parse.unquote(clean_path[len("/v1/models/") :])
+            return (
+                bool(model_id) and "/" not in model_id and ".." not in model_id and model_id != "."
+            )
         if method == "POST" and clean_path == "/v1/chat/completions":
             return True
         if method == "POST" and clean_path == "/v1/completions":
             return True
         if method == "POST" and clean_path == "/v1/embeddings":
             return self.enable_embeddings
-        return False
+        return bool(method == "POST" and clean_path == "/v1/responses")
 
     def do_GET(self) -> None:  # noqa: N802
         start_time = time.monotonic()
@@ -321,7 +326,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             # Stream response body to client
             if is_chunked:
                 while True:
-                    chunk = upstream_resp.read(4096)
+                    chunk = getattr(upstream_resp, "read1", upstream_resp.read)(4096)
                     if not chunk:
                         break
                     chunk_header = f"{len(chunk):X}\r\n".encode("latin-1")

@@ -43,12 +43,12 @@ def test_threshold_a100_boundary():
 
     # >= 36 GiB (36864 MiB)
     prof = select_profile(40960, profiles, fallback)
-    assert prof["model"] == "qwen2.5-coder:32b"
-    assert prof["context_length"] == 16384
+    assert prof["model"] == "qwen3-coder:30b"
+    assert prof["context_length"] == 32768
     assert prof["gpu_family"] == "A100"
 
     prof_exact = select_profile(36864, profiles, fallback)
-    assert prof_exact["model"] == "qwen2.5-coder:32b"
+    assert prof_exact["model"] == "qwen3-coder:30b"
 
 
 def test_threshold_l4_boundary():
@@ -59,7 +59,7 @@ def test_threshold_l4_boundary():
     # >= 20 GiB (20480 MiB) up to 36863 MiB
     prof = select_profile(23034, profiles, fallback)
     assert prof["model"] == "qwen2.5-coder:14b"
-    assert prof["context_length"] == 16384
+    assert prof["context_length"] == 32768
     assert prof["gpu_family"] == "L4"
 
     prof_boundary = select_profile(36863, profiles, fallback)
@@ -73,12 +73,12 @@ def test_threshold_t4_boundary():
 
     # >= 12 GiB (12288 MiB) up to 20479 MiB
     prof = select_profile(15109, profiles, fallback)
-    assert prof["model"] == "qwen2.5-coder:7b"
+    assert prof["model"] == "qwen3-coder:8b"
     assert prof["context_length"] == 16384
     assert prof["gpu_family"] == "T4"
 
     prof_min = select_profile(12288, profiles, fallback)
-    assert prof_min["model"] == "qwen2.5-coder:7b"
+    assert prof_min["model"] == "qwen3-coder:8b"
 
 
 def test_threshold_fallback_boundary():
