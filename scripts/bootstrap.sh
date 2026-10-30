@@ -10,7 +10,7 @@ set +x
 SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
 REPO_ROOT=""
 if [[ -n "$SCRIPT_SOURCE" && "$SCRIPT_SOURCE" != "-" && "$SCRIPT_SOURCE" != "/dev/stdin" ]]; then
-  CANDIDATE_ROOT="$(cd "$(dirname "$SCRIPT_SOURCE")/.." 2>/dev/null && pwd || true)"
+  CANDIDATE_ROOT="$( (cd "$(dirname "$SCRIPT_SOURCE")/.." 2>/dev/null && pwd) || true )"
   if [[ -n "$CANDIDATE_ROOT" && \
         -f "$CANDIDATE_ROOT/config/model-profiles.json" && \
         -f "$CANDIDATE_ROOT/src/bridge_proxy.py" && \
@@ -22,7 +22,7 @@ fi
 
 # Distribution defaults & trust root
 DEFAULT_DIST_URL="https://raw.githubusercontent.com/Vidoxlabs/colab-ollama-bridge/v0.1.1"
-RUNTIME_MANIFEST_SHA256="6d084f3816c2063588b67e5109c7b38c009832ee3e4cc8b4a6ac76e42517a43e"
+RUNTIME_MANIFEST_SHA256="bc5c9d6b8bc684d2938d8888414a74b48c9ba47bfecdd6c9b0616115a9915897"
 
 if [[ -n "${BRIDGE_DIST_URL:-}" && "$BRIDGE_DIST_URL" != "$DEFAULT_DIST_URL" ]]; then
   echo "[WARN] [STAGE:preflight] Custom BRIDGE_DIST_URL specified ($BRIDGE_DIST_URL); changing trust root." >&2
@@ -330,7 +330,12 @@ if curl -fs "http://$OLLAMA_BIND/" >/dev/null 2>&1; then
 fi
 
 if [[ $OLLAMA_RUNNING -eq 0 ]]; then
-  OLLAMA_HOST="$OLLAMA_BIND" ollama serve > "$BRIDGE_STATE_DIR/ollama.log" 2>&1 &
+  OLLAMA_HOST="$OLLAMA_BIND" \
+  OLLAMA_FLASH_ATTENTION="${OLLAMA_FLASH_ATTENTION:-1}" \
+  OLLAMA_KV_CACHE_TYPE="${OLLAMA_KV_CACHE_TYPE:-q8_0}" \
+  OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-24h}" \
+  OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}" \
+  ollama serve > "$BRIDGE_STATE_DIR/ollama.log" 2>&1 &
   OLLAMA_PID=$!
   echo "$OLLAMA_PID" > "$BRIDGE_STATE_DIR/ollama.pid"
   python3 "$APP_DIR/src/supervisor.py" register ollama "$OLLAMA_PID" "ollama" 2>/dev/null || true
@@ -473,6 +478,14 @@ python3 "$APP_DIR/scripts/generate-client-config.py" \
   --model "$SELECTED_MODEL" \
   --context "$SELECTED_CONTEXT" \
   --mode "$ACTIVE_MODE"
+
+if [[ -n "${BRIDGE_DISCOVERY_WEBHOOK_URL:-}" ]]; then
+  echo "Registering endpoint with discovery webhook..."
+  curl -s -X POST "$BRIDGE_DISCOVERY_WEBHOOK_URL" \
+       -H "Content-Type: application/json" \
+       -H "Authorization: Bearer ${BRIDGE_DISCOVERY_SECRET:-}" \
+       -d "{\"tunnel_url\": \"$TUNNEL_URL\", \"gpu_name\": \"$GPU_NAME\", \"model\": \"$SELECTED_MODEL\", \"status\": \"ready\"}" || true
+fi
 
 if [[ "$SKIP_SUPERVISE" == "true" ]]; then
   echo "SKIP_SUPERVISE is true; exiting bootstrap."

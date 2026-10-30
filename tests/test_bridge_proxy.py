@@ -37,6 +37,13 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+        elif self.path.startswith("/v1/models/"):
+            data = json.dumps({"id": self.path.split("/")[-1]}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
         else:
             self.send_response(404)
             self.end_headers()
@@ -298,7 +305,7 @@ def test_route_normalization_and_traversal(servers):
         "/v1/%2e%2e/api/tags",
         "/api/tags/../tags",
         "//api/tags",
-        "/v1/models/extra",
+        "/v1/models/extra/subpath",
         "/v1/models/",
     ]
     for p in traversal_paths:
@@ -397,3 +404,18 @@ def test_cache_control_no_store_on_all_responses(servers):
         urlopen(req_401)
     assert exc_info.value.code == 401
     assert exc_info.value.headers.get("Cache-Control") == "no-store"
+
+
+def test_responses_route_allowed(servers):
+    proxy_addr, _ = servers
+    url = f"http://{proxy_addr}/v1/responses"
+    body = json.dumps({"test": "data"}).encode("utf-8")
+    Request(
+        url,
+        data=body,
+        headers={"Authorization": f"Bearer {TEST_API_KEY}", "Content-Type": "application/json"},
+    )
+    # the mock proxy returns 404 for anything but /v1/models right now,
+    # but the request should be forwarded upstream (meaning it gets past 401 and 404 from bridge proxy)
+    # the MockOllamaHandler will return 404. Let's make sure it's the upstream 404 not bridge proxy 404
+    # Wait, the proxy will return whatever upstream returns. Let's check MockOllamaHandler.

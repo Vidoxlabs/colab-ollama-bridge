@@ -95,6 +95,9 @@ def main() -> None:
     print("// Ensure environment variables are exported in your local shell profile.")
     print("// =============================================================================")
     print(formatted_json)
+    print("\n// Or for standard OpenAI tools:")
+    print('// export OPENAI_BASE_URL="{env:COLAB_OLLAMA_BASE_URL}/v1"')
+    print('// export OPENAI_API_KEY="{env:COLAB_BRIDGE_API_KEY}"')
 
 
 if __name__ == "__main__":

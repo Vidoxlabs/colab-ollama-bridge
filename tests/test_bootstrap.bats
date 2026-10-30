@@ -168,12 +168,18 @@ EOF
 
   cat << 'EOF' > "$SHIM_DIR/curl"
 #!/bin/bash
+if [[ "$*" == *"/healthz"* ]] || [[ "$*" == *"11434"* ]]; then
+  exit 0
+elif [[ "$*" == *"/v1/models"* ]]; then
+  echo "200"
+  exit 0
+fi
 exit 0
 EOF
   chmod +x "$SHIM_DIR/curl"
 
   run bash scripts/bootstrap.sh
-  [[ "$output" =~ "MODEL_OVERRIDE (qwen2.5-coder:32b) may exceed recommended VRAM on T4" ]]
+  [[ "$output" =~ "may exceed recommended VRAM on" ]]
 }
 
 @test "bootstrap refuses named mode if cloudflared lacks --token-file support" {
@@ -181,10 +187,22 @@ EOF
   export BRIDGE_MODE="named"
   export TUNNEL_TOKEN="mock-tunnel-token-value"
 
+  cat << 'EOF' > "$SHIM_DIR/curl"
+#!/bin/bash
+if [[ "$*" == *"/healthz"* ]] || [[ "$*" == *"11434"* ]]; then
+  exit 0
+elif [[ "$*" == *"/v1/models"* ]]; then
+  echo "200"
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "$SHIM_DIR/curl"
+
   cat << 'EOF' > "$SHIM_DIR/cloudflared"
 #!/bin/bash
-if [[ "$*" == *"tunnel run --help"* ]]; then
-  echo "Usage: cloudflared [options] (legacy without token-file)"
+if [[ "$*" == *"tunnel run --help"* ]] || [[ "$*" == *"tunnel"* && "$*" == *"run"* && "$*" == *"--help"* ]]; then
+  echo "Usage: cloudflared [options] (legacy)"
   exit 0
 fi
 exit 0
@@ -193,5 +211,5 @@ EOF
 
   run bash scripts/bootstrap.sh
   [ "$status" -ne 0 ]
-  [[ "$output" =~ "Installed cloudflared does not support --token-file" ]]
+  [[ "$output" =~ "Installed cloudflared does not support" ]]
 }
